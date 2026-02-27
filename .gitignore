@@ -1,0 +1,31 @@
+add# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Charts temp
+charts/*.png
+
+# Distribution
+*.egg-info/
+dist/
+build/
+ 
+# Agent skills
+.agents/
