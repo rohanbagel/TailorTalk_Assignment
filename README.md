@@ -1,4 +1,4 @@
-Titanic Dataset Chat Agent
+# Titanic Dataset Chat Agent
 
 Chatbot for exploring the Titanic passenger dataset. Ask questions and get text answers or charts.
 
