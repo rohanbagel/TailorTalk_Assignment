@@ -1,22 +1,19 @@
 """
-Streamlit frontend for the Titanic Chat Agent.
-
-Renders a clean chat interface that sends questions to the FastAPI backend
-and displays text answers + inline chart images.
+Streamlit app for Titanic Chat Agent — standalone version for Streamlit Cloud.
+Calls the LangChain agent directly (no separate FastAPI backend needed).
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import uuid
 
-import requests
+import nest_asyncio
 import streamlit as st
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+nest_asyncio.apply()
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -27,18 +24,24 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Inject Groq key from Streamlit secrets into env before importing agent ────
+
+if "GROQ_API_KEY" in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+
+# ── Lazy agent import (after env is set) ─────────────────────────────────────
+
+from backend.agent import ask_agent  # noqa: E402
+
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 
 st.markdown(
     """
     <style>
-    /* Main container */
     .main .block-container {
         max-width: 900px;
         padding-top: 2rem;
     }
-
-    /* Sidebar: force dark background with white text for full visibility */
     section[data-testid="stSidebar"] {
         background-color: #1a1a2e !important;
     }
@@ -47,9 +50,7 @@ st.markdown(
     }
     section[data-testid="stSidebar"] h1,
     section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 {
-        color: #ffffff !important;
-    }
+    section[data-testid="stSidebar"] h3,
     section[data-testid="stSidebar"] strong {
         color: #ffffff !important;
     }
@@ -59,8 +60,6 @@ st.markdown(
     section[data-testid="stSidebar"] hr {
         border-color: #333355 !important;
     }
-
-    /* Clear button styling */
     section[data-testid="stSidebar"] .stButton > button {
         background-color: #2e2e4e;
         color: #ffffff !important;
@@ -71,17 +70,8 @@ st.markdown(
         background-color: #3e3e6e;
         border-color: #6666aa;
     }
-
-    /* Chat messages */
-    .stChatMessage {
-        border-radius: 10px;
-    }
-
-    /* Chart images */
-    img {
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    }
+    .stChatMessage { border-radius: 10px; }
+    img { border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
     </style>
     """,
     unsafe_allow_html=True,
@@ -108,14 +98,11 @@ with st.sidebar:
         - Show a bar chart of survival by gender
         """
     )
-
     st.divider()
-
     if st.button("Clear conversation", use_container_width=True):
         st.session_state.messages = []
         st.session_state.session_id = str(uuid.uuid4())
         st.rerun()
-
     st.divider()
     st.caption("Built with FastAPI · LangChain · Streamlit")
 
@@ -123,7 +110,6 @@ with st.sidebar:
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
@@ -143,28 +129,18 @@ for msg in st.session_state.messages:
 # ── Chat input ────────────────────────────────────────────────────────────────
 
 if prompt := st.chat_input("Ask about the Titanic dataset..."):
-    # Show user message
     st.session_state.messages.append({"role": "user", "text": prompt, "charts": []})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Call backend
     with st.chat_message("assistant"):
         with st.spinner("Analysing the dataset..."):
             try:
-                resp = requests.post(
-                    f"{BACKEND_URL}/chat",
-                    json={
-                        "question": prompt,
-                        "session_id": st.session_state.session_id,
-                    },
-                    timeout=120,
+                result = asyncio.run(
+                    ask_agent(prompt, session_id=st.session_state.session_id)
                 )
-                resp.raise_for_status()
-                data = resp.json()
-
-                answer_text = data.get("text", "Sorry, I couldn't process that.")
-                charts = data.get("charts", [])
+                answer_text = result.get("text", "Sorry, I could not process that.")
+                charts = result.get("charts", [])
 
                 st.markdown(answer_text)
                 for chart_b64 in charts:
@@ -173,17 +149,8 @@ if prompt := st.chat_input("Ask about the Titanic dataset..."):
                 st.session_state.messages.append(
                     {"role": "assistant", "text": answer_text, "charts": charts}
                 )
-
-            except requests.exceptions.ConnectionError:
-                err = "Cannot reach the backend. Make sure the FastAPI server is running on {}".format(
-                    BACKEND_URL
-                )
-                st.error(err)
-                st.session_state.messages.append(
-                    {"role": "assistant", "text": err, "charts": []}
-                )
             except Exception as exc:
-                err = f"⚠️ Error: {exc}"
+                err = f"Error: {exc}"
                 st.error(err)
                 st.session_state.messages.append(
                     {"role": "assistant", "text": err, "charts": []}
