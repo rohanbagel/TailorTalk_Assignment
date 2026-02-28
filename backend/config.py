@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # LLM
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama3-groq-70b-8192-tool-use-preview"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
 
     # Server
     BACKEND_HOST: str = "0.0.0.0"
